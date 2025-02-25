@@ -169,4 +169,115 @@ plt.show()
 #                        REGRESSÃO NÃO LINEAR MÚLTIPLA                      #
 #############################################################################
 
+database = pd.read_csv('mt_cars.csv')
+database.shape
 
+# Clean database
+cars = database['Unnamed: 0']
+database.drop(['Unnamed: 0'],axis=1,inplace=True)
+
+x=database.iloc[:,1:]
+y=database.iloc[:,0]
+#%%
+# Descriptive analysis and check of correlations between variables
+database.describe()
+
+correlation_matrix = x.corr() #Some variables have high correlation
+plt.figure(figsize=(15, 10))
+heatmap = sns.heatmap(correlation_matrix, annot=True, fmt=".2f",
+                      cmap=plt.cm.viridis_r,
+                      annot_kws={'size': 25}, vmin=-1, vmax=1)
+heatmap.set_xticklabels(heatmap.get_xticklabels(), fontsize=15)
+heatmap.set_yticklabels(heatmap.get_yticklabels(), fontsize=15)
+cbar = heatmap.collections[0].colorbar
+cbar.ax.tick_params(labelsize=17)
+plt.show()
+
+import pingouin as pg
+
+correlation_matrix2 = pg.rcorr(x, method='pearson',
+                              upper='pval', decimals=4,
+                              pval_stars={0.01: '***',
+                                          0.05: '**',
+                                          0.10: '*'})
+
+#%%
+# First test of Multiple Linear Regression without Stepwise Procedure
+
+model = sm.OLS.from_formula('mpg ~ cyl + disp + hp + drat + wt +\
+                            qsec + vs + am + gear + carb', database).fit()
+                            
+model.summary() # Many variables do not pass on T-test 
+
+teste_sf = shapiro_francia(model.resid) # Still, errors are adherent to Normal dist
+teste_sf= teste_sf.items()
+method, statistics_W, statistics_z, p = teste_sf
+print('Statistics W=%.5f, p-value=%.6f' % (statistics_W[1], p[1]))
+alpha = 0.05 
+if p[1] > alpha:
+    print('Não se rejeita H0 - Distribuição aderente à normalidade')
+else:
+	print('Rejeita-se H0 - Distribuição não aderente à normalidade')
+#%%
+
+#Now we use the stepwise procedure to produce a more reliable model
+
+from statstests.process import stepwise
+
+model_step = stepwise(model,pvalue_limit=0.05)
+
+model_step.summary()
+
+teste_sf = shapiro_francia(model.resid) 
+teste_sf= teste_sf.items()
+method, statistics_W, statistics_z, p = teste_sf
+print('Statistics W=%.5f, p-value=%.6f' % (statistics_W[1], p[1]))
+alpha = 0.05 
+if p[1] > alpha:
+    print('Não se rejeita H0 - Distribuição aderente à normalidade')
+else:
+	print('Rejeita-se H0 - Distribuição não aderente à normalidade')
+#%%
+
+#Finally, we use the Box-Cox transformation to obtain a final model
+
+yast, lmbda = boxcox(y)
+
+print("lambda: ",lmbda)
+
+database['mpg_bc'] = yast
+
+model_bc = sm.OLS.from_formula('mpg_bc ~ cyl + disp + hp + drat + wt +\
+                            qsec + vs + am + gear + carb', database).fit()
+
+model_bc.summary()
+
+teste_sf = shapiro_francia(model_bc.resid) 
+teste_sf= teste_sf.items()
+method, statistics_W, statistics_z, p = teste_sf
+print('Statistics W=%.5f, p-value=%.6f' % (statistics_W[1], p[1]))
+alpha = 0.05 
+if p[1] > alpha:
+    print('Não se rejeita H0 - Distribuição aderente à normalidade')
+else:
+ 	print('Rejeita-se H0 - Distribuição não aderente à normalidade')
+#%%
+
+# Lastly, we test the Box-Cox transform with stepwise procedure
+
+model_step_bc = stepwise(model_bc,pvalue_limit=0.05)
+
+model_step_bc.summary()
+
+teste_sf = shapiro_francia(model_step_bc.resid) 
+teste_sf= teste_sf.items()
+method, statistics_W, statistics_z, p = teste_sf
+print('Statistics W=%.5f, p-value=%.6f' % (statistics_W[1], p[1]))
+alpha = 0.05 
+if p[1] > alpha:
+    print('Não se rejeita H0 - Distribuição aderente à normalidade')
+else:
+ 	print('Rejeita-se H0 - Distribuição não aderente à normalidade')
+
+# Recover the untransformed values
+database['mpg_step_bc_final'] = (model_step_bc.fittedvalues*lmbda+1)**(1/lmbda)
